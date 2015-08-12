@@ -153,10 +153,10 @@ void LD_RDrawSprite (ld_sprite Sprite, f32 X, f32 Y, f32 Scale)
 		f32 Width = Sprite.Width*Scale;
 		f32 Height = Sprite.Height*Scale;
 
-		float SX = Sprite.XOffset/Sprite.Texture.Width;
-		float SY = Sprite.YOffset/Sprite.Texture.Height;
-		float SW = (Sprite.XOffset+Sprite.Width)/Sprite.Texture.Width;
-		float SH = (Sprite.YOffset+Sprite.Height)/Sprite.Texture.Height;
+		float SX = Sprite.XOffset/(f32)Sprite.Texture.Width;
+		float SY = Sprite.YOffset/(f32)Sprite.Texture.Height;
+		float SW = (Sprite.XOffset+Sprite.Width)/(f32)Sprite.Texture.Width;
+		float SH = (Sprite.YOffset+Sprite.Height)/(f32)Sprite.Texture.Height;
 
 		glTexCoord2f(SX, SY);
 		glVertex3f(X, Y, 0.0f);
@@ -272,22 +272,29 @@ file_result LD_LoadBitmapData (u32 **ImageData, char *FileName)
 
 		//u8 *ImageData = (Data+BitmapHeader->OffsetBits);
 
-		for (u32 Y = 0;
-			Y < ImageHeader->Height;
-			Y++)
+		u32 *Output = *ImageData;
+		/*
+			Y has to be signed so it doesn't wrap round
+			after it goes past 0
+		*/
+		for (s32 Y = ImageHeader->Height-1;
+			Y >= 0;
+			Y--)
 		{
 			for (u32 X = 0;
 				X < ImageHeader->Width;
 				X++)
 			{
-				u32 PixelIndex = ((ImageHeader->Height-1)-Y)
-					*(ImageHeader->Width+X);
+				u32 PixelIndex = Y*ImageHeader->Width + X;
 				u32 PaletteIndex = PixelData[PixelIndex];
 				u32 Color = Palette[PaletteIndex];
-				u32 ImageDataIndex = Y*ImageHeader->Width+X;
-				(*ImageData)[ImageDataIndex] = Color;
+				//u32 ImageDataIndex = Y*ImageHeader->Width+X;
+				//*(*ImageData + ImageDataIndex) = Color;
+				*Output++ = Color;
 			}
 		}
+
+		int x = 0;
 	}
 
 	return FileResult;
