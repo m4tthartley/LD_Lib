@@ -79,11 +79,11 @@ void LD_CreateWindow
 	glLoadIdentity();
 	glClearColor(1.0, 0.0, 1.0, 1.0);
 
-	/*glEnable(GL_BLEND);
+	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_DEPTH_TEST);
+	//glEnable(GL_DEPTH_TEST);
 	glAlphaFunc(GL_GREATER, 0.0f);
-	glEnable(GL_ALPHA_TEST);*/
+	glEnable(GL_ALPHA_TEST);
 }
 
 void LD_UpdateWindow (ld_window *Window)
@@ -107,10 +107,11 @@ void LD_Exit ()
 
 typedef struct
 {
-	f32 R;
-	f32 G;
-	f32 B;
-	f32 A;
+	u8 R;
+	u8 G;
+	u8 B;
+	u8 A;
+	u32 Pixel;
 } color;
 
 typedef struct
@@ -339,8 +340,13 @@ void LD_LoadBitmap (ld_texture *Texture, char *FileName)
 					X < ImageHeader->Width;
 					X++)
 				{
-					ImageData[Y*ImageHeader->Width+X] =
-						Palette[PixelData[((ImageHeader->Height-1)-Y)*ImageHeader->Width+X]];
+					u32 PixelColor = Palette[PixelData[((ImageHeader->Height-1)-Y)*ImageHeader->Width+X]];
+					if (PixelColor == 0xff000000 ||
+						PixelColor == 0xffff00ff)
+					{
+						PixelColor = 0;
+					}
+					ImageData[Y*ImageHeader->Width+X] = PixelColor;
 				}
 			}
 #endif

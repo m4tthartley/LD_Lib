@@ -2,21 +2,46 @@
 #include <stdio.h>
 #include "../src/ld_lib.h"
 
-enum direction
+typedef enum
 {
 	Dir_Right,
 	Dir_Left,
 	Dir_Down,
 	Dir_Up
-};
+} direction;
+
+typedef enum
+{
+	S_Blinky,
+	S_Pinky,
+	S_Inky,
+	S_Clyde
+} ghost_id;
+
+typedef enum
+{
+	Tile_Empty,
+	Tile_Filled
+} tile_type;
 
 typedef struct
 {
-	color Color;
+	tile_type Type;
 } tile;
 
+#define TILE_SIZE 32
+#define LEVEL_WIDTH 24
+#define LEVEL_HEIGHT 24
 #define TILE_COUNT 24*24
 tile Level[TILE_COUNT];
+
+#define WHITE (color){1.0f, 1.0f, 1.0f, 1.0f}
+
+u32 RandomInt (u32 Max)
+{
+	u32 Result = rand()%Max;
+	return Result;
+}
 
 /*typedef struct
 {
@@ -26,17 +51,78 @@ tile Level[TILE_COUNT];
 
 game_state Game;*/
 
-void InitLevel ()
+typedef struct
+{
+	ghost_id ID;
+	s32 TilePosX;
+	s32 TilePosY;
+	s32 LastTilePosX;
+	s32 LastTilePosY;
+	u32 Counter;
+	direction Dir;
+	f32 AniCounter;
+} entity;
+
+/*void InitLevel ()
 {
 	for (u32 I = 0;
 		I < TILE_COUNT;
 		I++)
 	{
-		f32 R = (f32)(rand()%256)/256.0f;
-		f32 G = (f32)(rand()%256)/256.0f;
-		f32 B = (f32)(rand()%256)/256.0f;
-		Level[I].Color = (color){R, G, B, 1.0f};
+		u8 R = (f32)(rand()%256)/256.0f;
+		u8 G = (f32)(rand()%256)/256.0f;
+		u8 B = (f32)(rand()%256)/256.0f;
+		Level[I].Color = (color){R, G, B, 255};
 	}
+}*/
+
+typedef struct
+{
+	s32 X;
+	s32 Y;
+} tile_position;
+
+b32 CheckTileEmpty (tile_position *NewPos, u32 TilePosX, u32 TilePosY)
+{
+	*NewPos = (tile_position){TilePosX, TilePosY};
+
+	if (NewPos->X < 0)
+	{
+		NewPos->X = LEVEL_WIDTH-1;
+	}
+	else
+	if (NewPos->X >= LEVEL_WIDTH)
+	{
+		NewPos->X = 0;
+	}
+
+	tile Tile = Level[NewPos->Y*LEVEL_WIDTH + NewPos->X];
+	if (Tile.Type == Tile_Empty)
+	{
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
+}
+
+tile_position GetRandomEmptyTile ()
+{
+	tile_position Result;
+	b32 Found = FALSE;
+	while (!Found)
+	{
+		u32 TileX = RandomInt(LEVEL_WIDTH);
+		u32 TileY = RandomInt(LEVEL_HEIGHT);
+		if (Level[TileY*LEVEL_WIDTH + TileX].Type == Tile_Empty)
+		{
+			Result = (tile_position){TileX, TileY};
+			Found = TRUE;
+		}
+	}
+
+	return Result;
 }
 
 int CALLBACK WinMain(
@@ -49,8 +135,6 @@ int CALLBACK WinMain(
 	
 	ld_window Window;
 	LD_CreateWindow(&Window, 768, 768, "PacMan");
-
-	InitLevel();
 
 	ld_texture TexGhosts;
 	LD_LoadBitmap(&TexGhosts, "../pacman/assets/ghosts.bmp");
@@ -66,10 +150,18 @@ int CALLBACK WinMain(
 		I++)
 	{
 		u32 *Pixel = LevelImageData + I;
-		f32 R = (*Pixel & 0x00ff0000) >> 16;
-		f32 G = (*Pixel & 0x0000ff00) >> 8;
-		f32 B = (*Pixel & 0x000000ff) >> 0;
-		Level[I].Color = (color){R, G, B, 1.0f};
+		/*u8 R = (*Pixel & 0x00ff0000) >> 16;
+		u8 G = (*Pixel & 0x0000ff00) >> 8;
+		u8 B = (*Pixel & 0x000000ff) >> 0;*/
+		//Level[I].Color = (color){R, G, B, 255};
+		if (*Pixel == 0xffffffff)
+		{
+			Level[I].Type = Tile_Filled;
+		}
+		else
+		{
+			Level[I].Type = Tile_Empty;
+		}
 	}
 
 	ld_sprite Ghost;
@@ -93,6 +185,56 @@ int CALLBACK WinMain(
 	S_Pacman.Width = 64;
 	S_Pacman.Height = 64;
 
+#define GHOST_SPRITE_COUNT 32
+	ld_sprite S_Ghosts[GHOST_SPRITE_COUNT];
+	/*S_Blinky[0].Texture = TexGhosts;
+	S_Blinky[0].XOffset = 0;
+	S_Blinky[0].YOffset = 0;
+	S_Blinky[0].Width = 16;
+	S_Blinky[0].Height = 16;*/
+	for (u32 I = 0;
+		I < GHOST_SPRITE_COUNT;
+		I++)
+	{
+		S_Ghosts[I].Texture = TexGhosts;
+		S_Ghosts[I].XOffset = (I%4)*16;
+		S_Ghosts[I].YOffset = (I/4)*16;
+		S_Ghosts[I].Width = 16;
+		S_Ghosts[I].Height = 16;
+	}
+
+	direction Opposites[] =
+	{
+		Dir_Left,
+		Dir_Right,
+		Dir_Up,
+		Dir_Down
+	};
+
+#define GhostCount 32
+	entity Ghosts[GhostCount] = {0};
+	for (u32 I = 0;
+		I < GhostCount;
+		I++)
+	{
+		Ghosts[I].ID = RandomInt(4);
+		//Ghosts[I] = {0};
+		tile_position Pos = GetRandomEmptyTile();
+		Ghosts[I].TilePosX = Pos.X;
+		Ghosts[I].TilePosY = Pos.Y;
+		Ghosts[I].LastTilePosX = Pos.X;
+		Ghosts[I].LastTilePosY = Pos.Y;
+		Ghosts[I].Counter = 2;
+		Ghosts[I].Dir = Dir_Right;
+	}
+
+	/*entity Blinky = {0};
+	tile_position Pos = GetRandomEmptyTile();
+	Blinky.TilePosX = Pos.X;
+	Blinky.TilePosY = Pos.Y;
+	Blinky.Counter = 30;
+	Blinky.Dir = Dir_Right;*/
+
 	while (Window.Alive)
 	{
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -100,18 +242,153 @@ int CALLBACK WinMain(
 
 		color Cyan = {0.0f, 1.0f, 1.0f, 1.0f};
 		//LD_RDrawQuad(10, 10, 100, 100, Cyan);
-	
+
 		for (u32 I = 0;
 			I < TILE_COUNT;
 			I++)
 		{
-			LD_RDrawQuad((I%24)*32, (I/24)*32, 32, 32, Level[I].Color);
+			//if (Level[I].Color.C != 0xff000000)
+			{
+				if (Level[I].Type == Tile_Filled)
+				{
+					LD_RDrawQuad((I%24)*32, (I/24)*32, 32, 32, WHITE);
+				}
+			}
 		}
 
 		//LD_RDrawSprite(SpriteLevel, 200, 10, 4);
 
 		//LD_RDrawSprite(Ghost, 10, 100, 2);
 		//LD_RDrawSprite(S_Pacman, 200, 100, 2);
+
+		// Ghosts
+		for (u32 GhostIndex = 0;
+				GhostIndex < GhostCount;
+				GhostIndex++)
+		{
+			entity *Ghost = &Ghosts[GhostIndex];
+
+			// Movement
+			if (Ghost->Counter > 0)
+			{
+				Ghost->Counter--;
+				if (Ghost->Counter < 1)
+				{
+					Ghost->Counter = 30;
+
+					Ghost->LastTilePosX = Ghost->TilePosX;
+					Ghost->LastTilePosY = Ghost->TilePosY;
+
+					b32 Moved = FALSE;
+					while (!Moved)
+					{
+						u32 NewDir = RandomInt(4);
+						if (NewDir != Opposites[Ghost->Dir])
+						{
+							switch (NewDir)
+							{
+								case Dir_Right:
+								{
+									tile_position NewPos;
+									if (CheckTileEmpty(&NewPos,
+										Ghost->TilePosX+1, Ghost->TilePosY))
+									{
+										Ghost->TilePosX = NewPos.X;
+										Ghost->Dir = Dir_Right;
+										Moved = TRUE;
+									}
+								}
+								break;
+								case Dir_Left:
+								{
+									tile_position NewPos;
+									if (CheckTileEmpty(&NewPos,
+										Ghost->TilePosX-1, Ghost->TilePosY))
+									{
+										Ghost->TilePosX = NewPos.X;
+										Ghost->Dir = Dir_Left;
+										Moved = TRUE;
+									}
+								}
+								break;
+								case Dir_Down:
+								{
+									tile_position NewPos;
+									if (CheckTileEmpty(&NewPos,
+										Ghost->TilePosX, Ghost->TilePosY+1))
+									{
+										Ghost->TilePosY = NewPos.Y;
+										Ghost->Dir = Dir_Down;
+										Moved = TRUE;
+									}
+								}
+								break;
+								case Dir_Up:
+								{
+									tile_position NewPos;
+									if (CheckTileEmpty(&NewPos,
+										Ghost->TilePosX, Ghost->TilePosY-1))
+									{
+										Ghost->TilePosY = NewPos.Y;
+										Ghost->Dir = Dir_Up;
+										Moved = TRUE;
+									}
+								}
+								break;
+							}
+						}
+					}
+
+					/*switch (Blinky.Dir)
+					{
+						case Dir_Right:
+						{
+						}
+						break;
+						case Dir_Left:
+						{
+							Blinky.TilePosX--;
+						}
+						break;
+					}*/
+
+					if (Ghost->TilePosX >= LEVEL_WIDTH)
+					{
+						Ghost->TilePosX = 0;
+					}
+					if (Ghost->TilePosX < 0)
+					{
+						Ghost->TilePosX = LEVEL_WIDTH-1;
+					}
+					if (Ghost->TilePosY >= LEVEL_HEIGHT)
+					{
+						Ghost->TilePosY = 0;
+					}
+					if (Ghost->TilePosY < 0)
+					{
+						Ghost->TilePosY = LEVEL_HEIGHT-1;
+					}
+				}
+			}
+
+			// Animation
+			Ghost->AniCounter += 0.1f;
+			if (Ghost->AniCounter >= 2.0f)
+			{
+				Ghost->AniCounter = 0.0f;
+			}
+
+			u32 AniFrame = (u32)Ghost->AniCounter;
+
+			// Render
+			f32 RenderPosXDiff = ((f32)(Ghost->LastTilePosX*TILE_SIZE)-(f32)(Ghost->TilePosX*TILE_SIZE));
+			f32 RenderPosX = (Ghost->TilePosX*TILE_SIZE) + RenderPosXDiff*((f32)Ghost->Counter/30.0f);
+			f32 RenderPosYDiff = ((f32)(Ghost->LastTilePosY*TILE_SIZE)-(f32)(Ghost->TilePosY*TILE_SIZE));
+			f32 RenderPosY = (Ghost->TilePosY*TILE_SIZE) + RenderPosYDiff*((f32)Ghost->Counter/30.0f);
+			LD_RDrawSprite(S_Ghosts[(AniFrame*16)+(Ghost->ID*4)+Ghost->Dir],
+						   RenderPosX,
+						   RenderPosY, 2);
+		}
 
 		LD_UpdateWindow(&Window);
 	}
