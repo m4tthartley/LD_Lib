@@ -43,6 +43,9 @@ u32 RandomInt (u32 Max)
 	return Result;
 }
 
+#define MOVEMENT_COUNTER 20.0f
+#define PACMAN_MOVEMENT_COUNTER 18.0f
+
 /*typedef struct
 {
 	player Player;
@@ -60,6 +63,7 @@ typedef struct
 	s32 LastTilePosY;
 	u32 Counter;
 	direction Dir;
+	direction RequestedDir;
 	f32 AniCounter;
 } entity;
 
@@ -81,6 +85,34 @@ typedef struct
 	s32 X;
 	s32 Y;
 } tile_position;
+
+tile *GetTile (s32 X, s32 Y)
+{
+	if (X < LEVEL_WIDTH && X >= 0 &&
+		Y < LEVEL_HEIGHT && Y >= 0)
+	{
+		u32 Index = Y*LEVEL_WIDTH + X;
+		tile *Result = &Level[Index];
+		return Result;
+	}
+	else
+	{
+		return NULL;
+	}
+}
+
+b32 CheckTileType (s32 X, s32 Y, u32 Type)
+{
+	tile *Tile = GetTile(X, Y);
+	if (Tile && Tile->Type == Type)
+	{
+		return TRUE;
+	}
+	else
+	{
+		return FALSE;
+	}
+}
 
 b32 CheckTileEmpty (tile_position *NewPos, u32 TilePosX, u32 TilePosY)
 {
@@ -178,12 +210,29 @@ int CALLBACK WinMain(
 	SpriteLevel.Width = 24;
 	SpriteLevel.Height = 24;
 
-	ld_sprite S_Pacman;
-	S_Pacman.Texture = TexPacman;
-	S_Pacman.XOffset = 0;
-	S_Pacman.XOffset = 0;
-	S_Pacman.Width = 64;
-	S_Pacman.Height = 64;
+	ld_sprite S_Pacman[4];
+	for (u32 I = 0;
+		I < 4;
+		I++)
+	{
+		S_Pacman[I].Texture = TexPacman;
+		S_Pacman[I].XOffset = I*16;
+		S_Pacman[I].YOffset = 0;
+		S_Pacman[I].Width = 16;
+		S_Pacman[I].Height = 16;
+	}
+
+	ld_sprite S_Tiles[16];
+	for (u32 I = 0;
+		I < 16;
+		I++)
+	{
+		S_Tiles[I].Texture = TexPacman;
+		S_Tiles[I].XOffset = (I%8)*8;
+		S_Tiles[I].YOffset = 16+(I/8)*8;
+		S_Tiles[I].Width = 8;
+		S_Tiles[I].Height = 8;
+	}
 
 #define GHOST_SPRITE_COUNT 32
 	ld_sprite S_Ghosts[GHOST_SPRITE_COUNT];
@@ -211,7 +260,7 @@ int CALLBACK WinMain(
 		Dir_Down
 	};
 
-#define GhostCount 32
+#define GhostCount 16 //8092
 	entity Ghosts[GhostCount] = {0};
 	for (u32 I = 0;
 		I < GhostCount;
@@ -224,7 +273,7 @@ int CALLBACK WinMain(
 		Ghosts[I].TilePosY = Pos.Y;
 		Ghosts[I].LastTilePosX = Pos.X;
 		Ghosts[I].LastTilePosY = Pos.Y;
-		Ghosts[I].Counter = 2;
+		Ghosts[I].Counter = MOVEMENT_COUNTER;
 		Ghosts[I].Dir = Dir_Right;
 	}
 
@@ -235,6 +284,16 @@ int CALLBACK WinMain(
 	Blinky.Counter = 30;
 	Blinky.Dir = Dir_Right;*/
 
+	entity PacMan = {0};
+	tile_position Pos = GetRandomEmptyTile();
+	PacMan.TilePosX = Pos.X;
+	PacMan.TilePosY = Pos.Y;
+	PacMan.LastTilePosX = Pos.X;
+	PacMan.LastTilePosY = Pos.Y;
+	PacMan.Dir = Dir_Right;
+	PacMan.Counter = PACMAN_MOVEMENT_COUNTER;
+	PacMan.AniCounter = 0.0f;
+
 	while (Window.Alive)
 	{
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -243,15 +302,147 @@ int CALLBACK WinMain(
 		color Cyan = {0.0f, 1.0f, 1.0f, 1.0f};
 		//LD_RDrawQuad(10, 10, 100, 100, Cyan);
 
-		for (u32 I = 0;
-			I < TILE_COUNT;
-			I++)
+		for (u32 Y = 0;
+			Y < LEVEL_HEIGHT;
+			Y++)
 		{
-			//if (Level[I].Color.C != 0xff000000)
+			for (u32 X = 0;
+				X < LEVEL_WIDTH;
+				X++)
 			{
-				if (Level[I].Type == Tile_Filled)
+				tile *Tile = GetTile(X, Y);
+				if (Tile->Type == Tile_Filled)
 				{
-					LD_RDrawQuad((I%24)*32, (I/24)*32, 32, 32, WHITE);
+					//LD_RDrawQuad((I%24)*32, (I/24)*32, 32, 32, WHITE);
+					f32 XPos = X*32;
+					f32 YPos = Y*32;
+					tile *OtherTile;
+
+					/*OtherTile = GetTile(X+1, Y);
+					if (!OtherTile || OtherTile->Type == Tile_Empty)
+					{
+						OtherTile = GetTile(X, Y-1);
+						if (!OtherTile || OtherTile->Type == Tile_Empty)
+						{
+							LD_RDrawSprite(S_Tiles[4+0], XPos, YPos, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[0], XPos, YPos, 2);
+						}
+					}
+
+					OtherTile = GetTile(X-1, Y);
+					if (!OtherTile || OtherTile->Type == Tile_Empty)
+					{
+						LD_RDrawSprite(S_Tiles[1], XPos, YPos, 2);
+					}
+
+					OtherTile = GetTile(X, Y+1);
+					if (!OtherTile || OtherTile->Type == Tile_Empty)
+					{
+						LD_RDrawSprite(S_Tiles[2], XPos, YPos, 2);
+					}
+
+					OtherTile = GetTile(X, Y-1);
+					if (!OtherTile || OtherTile->Type == Tile_Empty)
+					{
+						LD_RDrawSprite(S_Tiles[3], XPos, YPos, 2);
+					}*/
+
+					/*LD_RDrawSprite(S_Tiles[4+0], XPos, YPos, 2);
+
+					if (CheckTileType(X-1, Y, Tile_Empty))
+					{
+						LD_RDrawSprite(S_Tiles[4+1], XPos, YPos, 2);
+					}
+					else
+					{
+						LD_RDrawSprite(S_Tiles[0], XPos, YPos, 2);
+					}
+
+					LD_RDrawSprite(S_Tiles[4+2], XPos, YPos, 2);
+					LD_RDrawSprite(S_Tiles[4+3], XPos, YPos, 2);*/
+
+					// Tile sides
+#define TILE_PART 16
+					if (CheckTileType(X, Y-1, Tile_Empty))
+					{
+						if (CheckTileType(X-1, Y, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+0], XPos, YPos, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[0], XPos, YPos, 2);
+						}
+						if (CheckTileType(X+1, Y, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+1], XPos+TILE_PART, YPos, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[1], XPos+TILE_PART, YPos, 2);
+						}
+					}
+					if (CheckTileType(X+1, Y, Tile_Empty))
+					{
+						if (CheckTileType(X, Y-1, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+2], XPos+TILE_PART, YPos, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[2], XPos+TILE_PART, YPos, 2);
+						}
+						if (CheckTileType(X, Y+1, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+3], XPos+TILE_PART, YPos+TILE_PART, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[3], XPos+TILE_PART, YPos+TILE_PART, 2);
+						}
+					}
+					if (CheckTileType(X-1, Y, Tile_Empty))
+					{
+						if (CheckTileType(X, Y-1, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+4], XPos, YPos, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[4], XPos, YPos, 2);
+						}
+						if (CheckTileType(X, Y+1, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+5], XPos, YPos+TILE_PART, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[5], XPos, YPos+TILE_PART, 2);
+						}
+					}
+					
+					if (CheckTileType(X, Y+1, Tile_Empty))
+					{
+						if (CheckTileType(X-1, Y, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+6], XPos, YPos+TILE_PART, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[6], XPos, YPos+TILE_PART, 2);
+						}
+						if (CheckTileType(X+1, Y, Tile_Empty))
+						{
+							LD_RDrawSprite(S_Tiles[8+7], XPos+TILE_PART, YPos+TILE_PART, 2);
+						}
+						else
+						{
+							LD_RDrawSprite(S_Tiles[7], XPos+TILE_PART, YPos+TILE_PART, 2);
+						}
+					}
 				}
 			}
 		}
@@ -274,7 +465,7 @@ int CALLBACK WinMain(
 				Ghost->Counter--;
 				if (Ghost->Counter < 1)
 				{
-					Ghost->Counter = 30;
+					Ghost->Counter = MOVEMENT_COUNTER;
 
 					Ghost->LastTilePosX = Ghost->TilePosX;
 					Ghost->LastTilePosY = Ghost->TilePosY;
@@ -382,13 +573,155 @@ int CALLBACK WinMain(
 
 			// Render
 			f32 RenderPosXDiff = ((f32)(Ghost->LastTilePosX*TILE_SIZE)-(f32)(Ghost->TilePosX*TILE_SIZE));
-			f32 RenderPosX = (Ghost->TilePosX*TILE_SIZE) + RenderPosXDiff*((f32)Ghost->Counter/30.0f);
+			f32 RenderPosX = (Ghost->TilePosX*TILE_SIZE) + RenderPosXDiff*((f32)Ghost->Counter/MOVEMENT_COUNTER);
+			if (Ghost->LastTilePosX > Ghost->TilePosX)
+			{
+				if (Ghost->LastTilePosX - Ghost->TilePosX > 1)
+				{
+					RenderPosX = Ghost->LastTilePosX*TILE_SIZE;
+				}
+			}
+			else
+			{
+				if (Ghost->TilePosX - Ghost->LastTilePosX > 1)
+				{
+					RenderPosX = Ghost->LastTilePosX*TILE_SIZE;
+				}
+			}
 			f32 RenderPosYDiff = ((f32)(Ghost->LastTilePosY*TILE_SIZE)-(f32)(Ghost->TilePosY*TILE_SIZE));
-			f32 RenderPosY = (Ghost->TilePosY*TILE_SIZE) + RenderPosYDiff*((f32)Ghost->Counter/30.0f);
+			f32 RenderPosY = (Ghost->TilePosY*TILE_SIZE) + RenderPosYDiff*((f32)Ghost->Counter/MOVEMENT_COUNTER);
 			LD_RDrawSprite(S_Ghosts[(AniFrame*16)+(Ghost->ID*4)+Ghost->Dir],
 						   RenderPosX,
 						   RenderPosY, 2);
 		}
+
+		//Player/PacMan
+		/*for (u32 BitIndex = 0;
+			BitIndex < 32;
+			BitIndex++)
+		{
+			if (Keys & ())
+			OutputDebugString();
+		}*/
+		if (Keys & Key_Left)
+		{
+			PacMan.RequestedDir = Dir_Left;
+		}
+		if (Keys & Key_Right)
+		{
+			PacMan.RequestedDir = Dir_Right;
+		}
+		if (Keys & Key_Up)
+		{
+			PacMan.RequestedDir = Dir_Up;
+		}
+		if (Keys & Key_Down)
+		{
+			PacMan.RequestedDir = Dir_Down;
+		}
+
+		PacMan.Counter--;
+		if (PacMan.Counter < 1)
+		{
+			PacMan.AniCounter = 0.0f;
+			PacMan.Counter = PACMAN_MOVEMENT_COUNTER;
+			PacMan.LastTilePosX = PacMan.TilePosX;
+			PacMan.LastTilePosY = PacMan.TilePosY;
+
+			if (PacMan.RequestedDir == Dir_Left)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX-1, PacMan.TilePosY))
+				{
+					PacMan.Dir = PacMan.RequestedDir;
+				}
+			}
+			if (PacMan.RequestedDir == Dir_Right)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX+1, PacMan.TilePosY))
+				{
+					PacMan.Dir = PacMan.RequestedDir;
+				}
+			}
+			if (PacMan.RequestedDir == Dir_Up)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX, PacMan.TilePosY-1))
+				{
+					PacMan.Dir = PacMan.RequestedDir;
+				}
+			}
+			if (PacMan.RequestedDir == Dir_Down)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX, PacMan.TilePosY+1))
+				{
+					PacMan.Dir = PacMan.RequestedDir;
+				}
+			}
+
+			PacMan.Counter = PACMAN_MOVEMENT_COUNTER;
+			if (PacMan.Dir == Dir_Left)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX-1, PacMan.TilePosY))
+				{
+					PacMan.TilePosX = Pos.X;
+				}
+			}
+			if (PacMan.Dir == Dir_Right)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX+1, PacMan.TilePosY))
+				{
+					PacMan.TilePosX = Pos.X;
+				}
+			}
+			if (PacMan.Dir == Dir_Up)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX, PacMan.TilePosY-1))
+				{
+					PacMan.TilePosY = Pos.Y;
+				}
+			}
+			if (PacMan.Dir == Dir_Down)
+			{
+				tile_position Pos;
+				if (CheckTileEmpty(&Pos, PacMan.TilePosX, PacMan.TilePosY+1))
+				{
+					PacMan.TilePosY = Pos.Y;
+				}
+			}
+		}
+
+		b32 Moving = PacMan.LastTilePosX != PacMan.TilePosX ||
+			PacMan.LastTilePosY != PacMan.TilePosY;
+
+		if (Moving)
+		{
+			PacMan.AniCounter += 4.0f / PACMAN_MOVEMENT_COUNTER;
+			if (PacMan.AniCounter >= 4.0f)
+			{
+				PacMan.AniCounter = 0.0f;
+			}
+		}
+		u32 AniFrame = (u32)PacMan.AniCounter;
+		/*if (!Moving)
+		{
+			AniFrame = 1;
+		}*/
+
+		s32 Angles[] = { 0, 180, 90, 270 };
+
+		f32 RenderPosXDiff = ((f32)(PacMan.LastTilePosX*TILE_SIZE)-(f32)(PacMan.TilePosX*TILE_SIZE));
+		f32 RenderPosX = (PacMan.TilePosX*TILE_SIZE) + RenderPosXDiff*((f32)PacMan.Counter/PACMAN_MOVEMENT_COUNTER);
+		f32 RenderPosYDiff = ((f32)(PacMan.LastTilePosY*TILE_SIZE)-(f32)(PacMan.TilePosY*TILE_SIZE));
+		f32 RenderPosY = (PacMan.TilePosY*TILE_SIZE) + RenderPosYDiff*((f32)PacMan.Counter/PACMAN_MOVEMENT_COUNTER);
+		LD_RDrawSpriteRotate(S_Pacman[AniFrame],
+						   RenderPosX,
+						   RenderPosY, 2, Angles[PacMan.Dir]);
 
 		LD_UpdateWindow(&Window);
 	}

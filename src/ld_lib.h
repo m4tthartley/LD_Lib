@@ -86,6 +86,35 @@ void LD_CreateWindow
 	glEnable(GL_ALPHA_TEST);
 }
 
+enum
+{
+	Key_Up		= (1<<0),
+	Key_Down	= (1<<1),
+	Key_Left	= (1<<2),
+	Key_Right	= (1<<3),
+	Key_W		= (1<<4),
+	Key_A		= (1<<5),
+	Key_S		= (1<<6),
+	Key_D		= (1<<7),
+	Key_X		= (1<<8),
+	Key_Z		= (1<<9),
+	Key_Space	= (1<<10),
+	Key_Ctrl	= (1<<11)
+};
+
+u32 Keys = 0;
+
+// Needs to handle multiple keys
+b32 K_Down (u32 BitMask)
+{
+	return FALSE;
+}
+
+b32 K_Up (u32 BitMask)
+{
+	return FALSE;
+}
+
 void LD_UpdateWindow (ld_window *Window)
 {
 	SDL_Event Event;
@@ -94,6 +123,46 @@ void LD_UpdateWindow (ld_window *Window)
 		if (Event.type == SDL_QUIT)
 		{
 			Window->Alive = FALSE;
+		}
+		if (Event.type == SDL_KEYDOWN)
+		{
+			switch (Event.key.keysym.sym)
+			{
+				case SDLK_UP: { Keys |= Key_Up; } break;
+				case SDLK_DOWN: { Keys |= Key_Down; } break;
+				case SDLK_LEFT: { Keys |= Key_Left; } break;
+				case SDLK_RIGHT: { Keys |= Key_Right; } break;
+
+				case SDLK_w: { Keys |= Key_W; } break;
+				case SDLK_a: { Keys |= Key_A; } break;
+				case SDLK_s: { Keys |= Key_S; } break;
+				case SDLK_d: { Keys |= Key_D; } break;
+
+				case SDLK_x: { Keys |= Key_X; } break;
+				case SDLK_z: { Keys |= Key_Z; } break;
+				case SDLK_SPACE: { Keys |= Key_Space; } break;
+				case SDLK_LCTRL: { Keys |= Key_Ctrl; } break;
+			}
+		}
+		if (Event.type == SDL_KEYUP)
+		{
+			switch (Event.key.keysym.sym)
+			{
+				case SDLK_UP: { Keys &= ~Key_Up; } break;
+				case SDLK_DOWN: { Keys &= ~Key_Down; } break;
+				case SDLK_LEFT: { Keys &= ~Key_Left; } break;
+				case SDLK_RIGHT: { Keys &= ~Key_Right; } break;
+
+				case SDLK_w: { Keys &= ~Key_W; } break;
+				case SDLK_a: { Keys &= ~Key_A; } break;
+				case SDLK_s: { Keys &= ~Key_S; } break;
+				case SDLK_d: { Keys &= ~Key_D; } break;
+
+				case SDLK_x: { Keys &= ~Key_X; } break;
+				case SDLK_z: { Keys &= ~Key_Z; } break;
+				case SDLK_SPACE: { Keys &= ~Key_Space; } break;
+				case SDLK_LCTRL: { Keys &= ~Key_Ctrl; } break;
+			}
 		}
 	}
 
@@ -169,6 +238,40 @@ void LD_RDrawSprite (ld_sprite Sprite, f32 X, f32 Y, f32 Scale)
 		glVertex3f(X, Y+Height, 0.0f);
 	}
 	glEnd();
+}
+
+void LD_RDrawSpriteRotate (ld_sprite Sprite, f32 X, f32 Y, f32 Scale, f32 Rotation)
+{
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, Sprite.Texture.ID);
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	f32 Width = Sprite.Width*Scale;
+	f32 Height = Sprite.Height*Scale;
+
+	glPushMatrix();
+	glTranslatef(X+(Width/2), Y+(Height/2), 0);
+	glRotatef(Rotation, 0, 0, 1);
+	glTranslatef(-(Width/2), -(Height/2), 0);
+
+	glBegin(GL_QUADS);
+	{
+		float SX = Sprite.XOffset/(f32)Sprite.Texture.Width;
+		float SY = Sprite.YOffset/(f32)Sprite.Texture.Height;
+		float SW = (Sprite.XOffset+Sprite.Width)/(f32)Sprite.Texture.Width;
+		float SH = (Sprite.YOffset+Sprite.Height)/(f32)Sprite.Texture.Height;
+
+		glTexCoord2f(SX, SY);
+		glVertex3f(0, 0, 0.0f);
+		glTexCoord2f(SW, SY);
+		glVertex3f(Width, 0, 0.0f);
+		glTexCoord2f(SW, SH);
+		glVertex3f(Width, Height, 0.0f);
+		glTexCoord2f(SX, SH);
+		glVertex3f(0, Height, 0.0f);
+	}
+	glEnd();
+	glPopMatrix();
 }
 
 #pragma pack(push, 1)
