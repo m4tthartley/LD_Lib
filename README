@@ -1,0 +1,13 @@
+LD Lib
+
+A single file library designed for the LudumDare game jam.
+Uses SDL2 and OpenGL.
+
+Currently supports
+- Window creation
+- Quad and sprite rendering
+- Audio output
+- BMP image loading
+- WAV sound loading
+
+Documentaion may be a thing that will possibly exist at some point in the future.

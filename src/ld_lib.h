@@ -44,15 +44,19 @@ typedef struct
 	SDL_GLContext GLContext;
 } ld_window;
 
+void _InitSound ();
+
 void _InitSDL ()
 {
 	SDL_SetMainReady();
 
-	int32_t InitResult = SDL_Init(SDL_INIT_VIDEO);
+	int32_t InitResult = SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO);
 	if (InitResult != 0)
 	{
 		OutputDebugString("SDL_Init failed...");
 	}
+
+	_InitSound();
 }
 
 void LD_CreateWindow
@@ -171,6 +175,7 @@ void LD_UpdateWindow (ld_window *Window)
 
 void LD_Exit ()
 {
+	SDL_CloseAudio();
 	SDL_Quit();
 }
 
@@ -469,5 +474,88 @@ void LD_LoadBitmap (ld_texture *Texture, char *FileName)
 		Texture->Width = ImageHeader->Width;
 		Texture->Height = ImageHeader->Height;
 	}
+}
+
+typedef struct
+{
+	u8 *Buffer;
+	u32 Length;
+	s32 SampleRate;
+} sound_asset;
+
+typedef struct
+{
+	u8 *Buffer;
+	u8 *Cursor;
+	u32 Length;
+	s32 Volume;
+} sound_to_play;
+
+u8 *AudioPosition;
+u32 AudioLength;
+
+u32 SoundLength;
+u8 *SoundBuffer;
+SDL_AudioSpec AudioSpec;
+
+SDL_AudioFormat AudioFormat;
+
+void AudioCallback (void *UserData, u8 *Stream, s32 Length)
+{
+	char TextBuffer[64];
+	sprintf(TextBuffer, "Length to write %i \n", Length);
+	OutputDebugString(TextBuffer);
+
+	SDL_memset(Stream, 0, Length);
+
+	if (AudioLength <= 0)
+	{
+		return;
+	}
+	if (Length > AudioLength)
+	{
+		Length = AudioLength;
+	}
+
+	//SDL_MixAudioFormat(Stream, AudioPosition, SoundSpec.format, Length, SDL_MIX_MAXVOLUME/2);
+	for (u32 WriteIndex = 0;
+		WriteIndex < Length;
+		WriteIndex++)
+	{
+		*Stream++ = *AudioPosition++;
+	}
+
+	//AudioPosition += Length;
+	AudioLength -= Length;
+
+	if (AudioLength <= 0)
+	{
+		SDL_PauseAudio(1);
+	}
+}
+
+void _InitSound ()
+{
+	SDL_AudioSpec SoundSpec;
+	SDL_LoadWAV("../pacman/assets/Sleep_Away.wav",
+			&SoundSpec, &SoundBuffer, &SoundLength);
+	AudioPosition = SoundBuffer;
+	AudioLength = SoundLength;
+
+	AudioSpec.freq = 44100; //44100
+	/*
+		AUDIO_S16LSB
+		Signed 16bit samples in little endian byte order
+	*/
+	AudioSpec.format = AUDIO_S16LSB;
+	AudioSpec.channels = 2;
+	AudioSpec.silence = 0;
+	AudioSpec.samples = 4096;
+	AudioSpec.size = 0;
+	AudioSpec.callback = AudioCallback;
+	AudioSpec.userdata = NULL;
+
+	SDL_OpenAudio(&AudioSpec, NULL);
+	SDL_PauseAudio(0);
 }
 
