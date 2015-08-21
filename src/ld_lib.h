@@ -10,6 +10,12 @@
 	platform APIs later on
 */
 
+/*
+	TODO
+	- If a sound isn't loaded properly it trys play and crashes
+	- Test other asset loading for the same thing
+*/
+
 #include <stdint.h>
 
 //#define NULL 0
@@ -28,7 +34,7 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef s32 b32;
 
-#define Assert(Expression) if(!Expression){*((int*)0) = 0;}
+#define Assert(Expression) if(!(Expression)){*((int*)0) = 0;}
 
 #include <windows.h>
 #include <GL/gl.h>
@@ -36,6 +42,34 @@ typedef s32 b32;
 #include "../lib/sdl2/SDL.h"
 
 #define Struct(Name, Members) typedef struct {Members} Name;
+
+#if _WIN32
+#define MemoryAlloc(Size) VirtualAlloc(0, Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE)
+#endif
+
+typedef struct
+{
+	void *Memory;
+	size_t Size;
+	size_t Used;
+} memory_arena;
+
+memory_arena TransientArena;
+
+void *PushMemory (memory_arena *Arena, size_t Size)
+{
+	Assert(Arena->Used + Size <= Arena->Size);
+	u8 *Memory = (u8*)Arena->Memory + Arena->Used;
+	ZeroMemory(Memory, Size);
+	Arena->Used += Size;
+	return Memory;
+}
+
+void PopMemory (memory_arena *Arena, size_t Size)
+{
+	Assert(Arena->Used - Size >= 0);
+	Arena->Used -= Size;
+}
 
 typedef struct
 {
@@ -62,6 +96,10 @@ void _InitSDL ()
 void LD_CreateWindow
 (ld_window *Window, uint32_t Width, uint32_t Height, char *Title)
 {
+	TransientArena.Size = 256000; // 256k
+	TransientArena.Memory = (void*)MemoryAlloc(TransientArena.Size);
+	TransientArena.Used = 0;
+
 	_InitSDL();
 	Window->Alive = TRUE;
 
@@ -305,10 +343,6 @@ typedef struct _bitmap_image_header
 } bitmap_image_header;
 #pragma pack(pop)
 
-#if _WIN32
-#define MemoryAlloc(Size) VirtualAlloc(0, Size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE)
-#endif
-
 #define GL_BGRA 0x80E1
 
 typedef enum
@@ -485,62 +519,156 @@ typedef struct
 
 typedef struct
 {
+	b32 Playing;
 	u8 *Buffer;
-	u8 *Cursor;
+	u32 Cursor;
 	u32 Length;
-	s32 Volume;
+	f32 Volume;
 } sound_to_play;
+
+#define PLAYING_SOUNDS_MAX 64
+sound_to_play SoundsToPlay[PLAYING_SOUNDS_MAX];
+
+void LD_PlaySound (sound_asset SoundAsset)
+{
+	for (u32 Index = 0;
+		Index < PLAYING_SOUNDS_MAX;
+		Index++)
+	{
+		if (!SoundsToPlay[Index].Playing)
+		{
+			SoundsToPlay[Index].Playing = TRUE;
+			SoundsToPlay[Index].Buffer = SoundAsset.Buffer;
+			SoundsToPlay[Index].Cursor = 0;
+			SoundsToPlay[Index].Length = SoundAsset.Length;
+			SoundsToPlay[Index].Volume = 1.0f;
+
+			break;
+		}
+	}
+}
 
 u8 *AudioPosition;
 u32 AudioLength;
 
-u32 SoundLength;
-u8 *SoundBuffer;
+//u32 SoundLength;
+//u8 *SoundBuffer;
 SDL_AudioSpec AudioSpec;
 
-SDL_AudioFormat AudioFormat;
+//SDL_AudioFormat AudioFormat;
+
+#define PRINT(Text, ...) \
+	{char TextBuffer[256];\
+	sprintf(TextBuffer, Text"\n", __VA_ARGS__);\
+	OutputDebugString(TextBuffer);}
+
+void LD_LoadWav (sound_asset *SoundAsset, char *FileName)
+{
+	SDL_AudioSpec SoundSpec;
+	//u8 *Buffer;
+	//u32 Length;
+	SDL_LoadWAV(FileName, &SoundSpec, &SoundAsset->Buffer, &SoundAsset->Length);
+
+	/*
+		Samples must be 16bit and must have 2 channels
+	*/
+	Assert((SoundSpec.format & 0xFF) == 16);
+	Assert(SoundSpec.channels == 2);
+
+	PRINT("");
+	PRINT("File %s", FileName);
+	PRINT("Sound bit rate %i", SoundSpec.freq);
+	PRINT("Sound format %i", (SoundSpec.format & 0xFF));
+	PRINT("Sound channels %i", SoundSpec.channels);
+}
+
+#define MAX16BIT 32767
+#define MIN16BIT -32767
 
 void AudioCallback (void *UserData, u8 *Stream, s32 Length)
 {
-	char TextBuffer[64];
+	/*char TextBuffer[64];
 	sprintf(TextBuffer, "Length to write %i \n", Length);
-	OutputDebugString(TextBuffer);
+	OutputDebugString(TextBuffer);*/
 
 	SDL_memset(Stream, 0, Length);
 
-	if (AudioLength <= 0)
+#if 1
+	s16 *Output = (s16*)Stream;
+
+	size_t SampleMemorySize = sizeof(f32)*(Length/2);
+	f32 *Samples = PushMemory(&TransientArena, SampleMemorySize);
+
+	for (u32 SoundIndex = 0;
+		SoundIndex < PLAYING_SOUNDS_MAX;
+		SoundIndex++)
 	{
-		return;
-	}
-	if (Length > AudioLength)
-	{
-		Length = AudioLength;
+		sound_to_play *Sound = &SoundsToPlay[SoundIndex];
+
+		if (Sound->Playing)
+		{
+			u32 AmountLeft = Sound->Length - Sound->Cursor;
+			if (AmountLeft <= 0)
+			{
+				Sound->Playing = FALSE;
+				continue;
+			}
+			if (Length > AmountLeft)
+			{
+				Length = AmountLeft;
+			}
+
+			//SDL_MixAudioFormat(Stream, AudioPosition, SoundSpec.format, Length, SDL_MIX_MAXVOLUME/2);
+			for (u32 WriteIndex = 0;
+				WriteIndex < Length/2;
+				WriteIndex++)
+			{
+				//PRINT("Sample %i", *(Sound->Buffer + Sound->Cursor));
+				Samples[WriteIndex] += *((s16*)(Sound->Buffer + Sound->Cursor)) * 1.0f;
+				Sound->Cursor += 2;
+			}
+
+			//AudioPosition += Length;
+			//AudioLength -= Length;
+
+			/*if (AudioLength <= 0)
+			{
+				SDL_PauseAudio(1);
+			}*/
+		}
 	}
 
-	//SDL_MixAudioFormat(Stream, AudioPosition, SoundSpec.format, Length, SDL_MIX_MAXVOLUME/2);
 	for (u32 WriteIndex = 0;
-		WriteIndex < Length;
+		WriteIndex < Length/2;
 		WriteIndex++)
 	{
-		*Stream++ = *AudioPosition++;
+		f32 Sample = Samples[WriteIndex];
+		if (Sample > MAX16BIT)
+		{
+			Sample = MAX16BIT;
+		}
+		if (Sample < MIN16BIT)
+		{
+			Sample = MIN16BIT;
+		}
+		*Output++ = (s16)Sample;
 	}
 
-	//AudioPosition += Length;
-	AudioLength -= Length;
-
-	if (AudioLength <= 0)
-	{
-		SDL_PauseAudio(1);
-	}
+	PopMemory(&TransientArena, SampleMemorySize);
+#endif
 }
 
 void _InitSound ()
 {
-	SDL_AudioSpec SoundSpec;
+	/*SDL_AudioSpec SoundSpec;
 	SDL_LoadWAV("../pacman/assets/Sleep_Away.wav",
 			&SoundSpec, &SoundBuffer, &SoundLength);
+	PRINT("Sound bit rate %i", SoundSpec.freq);
+	PRINT("Sound format %i", (SoundSpec.format & 0xFF));
+	PRINT("Sound channels %i", SoundSpec.channels);
+
 	AudioPosition = SoundBuffer;
-	AudioLength = SoundLength;
+	AudioLength = SoundLength;*/
 
 	AudioSpec.freq = 44100; //44100
 	/*

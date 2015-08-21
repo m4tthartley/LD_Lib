@@ -175,6 +175,27 @@ int CALLBACK WinMain(
 	ld_texture TexPacman;
 	LD_LoadBitmap(&TexPacman, "../pacman/assets/sprites.bmp");
 
+	sound_asset Sound_Intro;
+	sound_asset Sound_SleepAway;
+	sound_asset Sound_Kalimba;
+	sound_asset Sound_Shoot;
+	sound_asset Sound_Hit;
+	sound_asset Sound_Explosion;
+
+	//LD_LoadWav(&Sound_Intro, "../pacman/assets/intro.wav");
+	LD_LoadWav(&Sound_SleepAway, "../pacman/assets/Sleep_Away.wav");
+	LD_LoadWav(&Sound_Kalimba, "../pacman/assets/Kalimba.wav");
+	LD_LoadWav(&Sound_Shoot, "../pacman/assets/shoot_48000.wav");
+	LD_LoadWav(&Sound_Hit, "../pacman/assets/hit.wav");
+	LD_LoadWav(&Sound_Explosion, "../pacman/assets/explosion.wav");
+
+	/*
+		TODO: If you play a sound that doesn't get loaded
+		it crashes, that's not great
+	*/
+	LD_PlaySound(Sound_SleepAway);
+	LD_PlaySound(Sound_Kalimba);
+
 	u32 *LevelImageData;
 	LD_LoadBitmapData(&LevelImageData, "../pacman/assets/level.bmp");
 	for (u32 I = 0;

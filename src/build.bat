@@ -1,0 +1,3 @@
+@echo off
+echo Building from src dir...
+../pacman/build.bat

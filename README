@@ -9,5 +9,54 @@ Currently supports
 - Audio output
 - BMP image loading
 - WAV sound loading
+- Keyboard input
 
 Documentaion may be a thing that will possibly exist at some point in the future.
+
+EXAMPLE PROGRAM
+#include "ld_lib.h"
+int main ()
+{
+	// Open a window
+	ld_window Window;
+	LD_CreateWindow(&Window, 1280, 720, "My Window");
+
+	// Load a texture
+	ld_texture Texture;
+	LD_LoadBitmap(&Texture, "texture.bmp");
+
+	// Load a sound
+	sound_asset Sound;
+	LD_LoadWav(&Sound, "sound.wav");
+
+	// Create a sprite from texture
+	ld_sprite Sprite;
+	Sprite.Texture = Texture;
+	Sprite.XOffset = 16;
+	Sprite.YOffset = 16;
+	Sprite.Width = 64;
+	Sprite.Height = 64;
+	
+	// Play a sound
+	LD_PlaySound(Sound);
+
+	// Render loop
+	while (Window.Alive)
+	{
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		// Draw quad
+		color Blue = {0.0f, 0.0f, 1.0f, 1.0f};
+		LD_RDrawQuad(10, 10, 100, 100, Blue);
+
+		// Draw sprite
+		LD_RDrawSprite(Sprite, 10, 10, 2);
+
+		LD_UpdateWindow(&Window);
+	}
+
+	// Close down "properly"
+	LD_Exit();
+}
+
